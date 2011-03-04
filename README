@@ -2,3 +2,6 @@ The IRC DHMN's soul purpose is to provide a bridge between the 2 DHMN IRC channe
 
 DHMN: http://dhmn.net
 DHMN IRC Channel Info: http://dhmn.net/IRC%2BChat
+
+
+The DHMN only uses 1 non-core library (directly): IRC-js, found at: https://github.com/gf3/IRC-js/
