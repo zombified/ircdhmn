@@ -10,10 +10,8 @@ if( typeof String.prototype.trim !== 'function' )
 var sys = require('sys');
 var irc = require('irc-js');
 
-var freenode_options = { server: 'irc.freenode.net', nick: 'dhmn43200',
-								user: { username: 'dhmn43200', hostname: 'dhmn.net', servername: 'dhmnjk', realname:'dhmn43200'} };
-var esper_options = { server: 'irc.esper.net', nick: 'dhmn43201', pass:'d4m0n',
-								user: { username: 'dhmn43201', hostname: 'dhmn.net', servername: 'dhmnjk', realname:'dhmn43201'} };
+var freenode_options = { server: 'verne.freenode.net', nick: 'ircdhmn'};
+var esper_options = { server: 'irc.esper.net', nick: 'ircdhmn'};
 
 var freebot = new irc( freenode_options );
 var esperbot = new irc( esper_options );
@@ -34,12 +32,12 @@ function botready( botname )
 
 function freebot_listener( msg )
 {
-	command_dispatch( esperbot, esper_options, freebot, freenode_options, '(freenode) ', '(esper) ', msg );
+	command_dispatch( esperbot, esper_options, freebot, freenode_options, '(fn) ', '(en) ', msg );
 }
 
 function esperbot_listener( msg )
 {
-	command_dispatch( freebot, freenode_options, esperbot, esper_options, '(esper) ', '(freenode) ', msg );
+	command_dispatch( freebot, freenode_options, esperbot, esper_options, '(en) ', '(fn) ', msg );
 }
 
 function echo_to( tobot, msg, prefix )
@@ -72,6 +70,20 @@ function command_dispatch( to, toOpt, from, fromOpt, outprefix, inprefix, msg )
 					from.privmsg('#dhmn', inprefix + names.join(', '));
 				});
 				break;
+
+			case 'src' :
+				from.privmsg('#dhmn', 'https://github.com/zombified/ircdhmn');
+				break;
+
+			case 'agree with me' :
+				from.privmsg('#dhmn', 'I agree with you, ' + msg.person.nick);
+				break;
+
+			default :
+				if( command.substr( 0, 'agree with '.length ) == 'agree with ' )
+				{
+					from.privmsg('#dhmn', 'I agree with ' + command.substr( 'agree with '.length ));
+				}
 		}
 	}
 	else
