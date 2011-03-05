@@ -1,3 +1,9 @@
+var sys = require('sys');
+var irc = require('irc-js');
+
+
+
+// add trim method to String object -- removes white space from both the left and right of a string
 if( typeof String.prototype.trim !== 'function' ) 
 {
 	String.prototype.trim = function() {
@@ -6,112 +12,162 @@ if( typeof String.prototype.trim !== 'function' )
 }
 
 
+// connection options
+var freenode = {
+	bot: 0,
+	opt: { server: 'verne.freenode.net', nick: 'ircdhmn' },
+	prefix: '(fn) ',
+	ready: false,
+};
+var espernet = {
+	bot: 0,
+	opt: { server: 'irc.esper.net', nick: 'ircdhmn' },
+	prefix: '(en) ',
+	ready: false,
+};
 
-var sys = require('sys');
-var irc = require('irc-js');
-
-var freenode_options = { server: 'verne.freenode.net', nick: 'ircdhmn'};
-var esper_options = { server: 'irc.esper.net', nick: 'ircdhmn'};
-
-var freebot = new irc( freenode_options );
-var esperbot = new irc( esper_options );
-
-var freebot_ready = false;
-var esperbot_ready = false;
+freenode.bot = new irc( freenode.opt );
+espernet.bot = new irc( espernet.opt );
 
 var do_echo = false;
 
 
+// list of command objects -- each object contains 2 properties: a regex value used to test against 
+// a command, and a operation function that gets executed if the test is a match
+//
+// op: function( orig, dest, rawmsg, cmd )
+//		orig: object representing the origin of the command, has the following properties:
+//			bot: the IRC object that handles communication with the IRC server
+//			opt: the options object associated with the bot
+//			prefix: a string identifying the bot's irc channel
+//		dest: object with same format as the orig parameter, except it represents the destination
+//		rawmsg: this is the message object as created in the IRC-js module
+//		cmd: this is the command text which was parsed out of the message text
+//		matches: this is the result of executing the test regex against the cmd
+//
+var commands = [
+	{
+		test: /^\s*yes\s*$/i,
+		op: function( orig, dest, rawmsg, cmd, matches ) { 
+				say( [orig.bot, dest.bot], '#dhmn', 'Good. Very good.' );
+			},
+	},
+	{
+		test: /^\s*no\s*$/i,
+		op: function( orig, dest, rawmsg, cmd, matches ) { 
+				say( [orig.bot, dest.bot], '#dhmn', 'Tsk. Tsk.' );
+			},
+	},
+	{
+		test: /^\s*src\s*$/i,
+		op: function( orig, dest, rawmsg, cmd, matches ) {
+				say( [orig.bot, dest.bot], '#dhmn', 'https://github.com/zombified/ircdhmn' );
+			},
+	},
+	{
+		test: /^\s*ls\s*$/i,
+		op: function( orig, dest, rawmsg, cmd, matches ) {
+				dest.bot.names('#dhmn', function( channel, names ) {
+					orig.bot.privmsg('#dhmn', dest.prefix + names.join(', '));
+				});
+			},
+	},
+	{
+		test: /^\s*agree with (.*)\s*$/i,
+		op: function( orig, dest, rawmsg, cmd, matches ) {
+				if( matches.length > 1 )
+				{
+					if( matches[1].trim().toLowerCase() == 'me' )
+					{
+						say( [orig.bot, dest.bot], '#dhmn', 'I agree with you, ' + rawmsg.person.nick );
+					}
+					else
+					{
+						say( [orig.bot, dest.bot], '#dhmn', 'I agree with ' + matches[1] );
+					}
+				}
+			},
+	},
+];
+
+
+
 function botready( botname )
 {
-	if( botname == 'freebot' ) { freebot_ready = true; }
-	else if( botname == 'esperbot' ) { esperbot_ready = true; }
+	if( botname == 'freenode' ) { freenode.ready = true; }
+	else if( botname == 'espernet' ) { espernet.ready = true; }
 
-	do_echo = freebot_ready && esperbot_ready;
+	do_echo = freenode.ready && espernet.ready;
 }
 
-function freebot_listener( msg )
+function freenode_listener( msg )
 {
-	command_dispatch( esperbot, esper_options, freebot, freenode_options, '(fn) ', '(en) ', msg );
+	command_dispatch( freenode, espernet, msg );
 }
 
-function esperbot_listener( msg )
+function espernet_listener( msg )
 {
-	command_dispatch( freebot, freenode_options, esperbot, esper_options, '(en) ', '(fn) ', msg );
+	command_dispatch( espernet, freenode, msg );
 }
 
-function echo_to( tobot, msg, prefix )
+// sends the same message to the given list of IRC-js objects
+function say( bots, to, msg )
 {
-	if( !do_echo || msg.person.nick == freenode_options.nick || msg.person.nick == esper_options.nick ) { return; }
-
-	tobot.privmsg( '#dhmn', prefix + msg.person.nick + '> ' + msg.params.slice( -1 ).toString() );
-}
-
-function command_dispatch( to, toOpt, from, fromOpt, outprefix, inprefix, msg )
-{	
-	var msgtext = msg.params.slice( -1 ).toString();
-	var prefix = fromOpt.nick + ':';
-	
-	if( msgtext.substr(0, prefix.length) == prefix )
+	for( var i = 0; i < bots.length; i++ )
 	{
-		var command = msgtext.substr(prefix.length).trim().toLowerCase();
-		switch( command )
+		bots[i].privmsg( to, msg );
+	}
+}
+
+function echo( orig, dest, msg )
+{
+	if( !do_echo ) { return; } // || msg.person.nick == freenode.opt.nick || msg.person.nick == espernet.opt.nick ) { return; }
+
+	dest.bot.privmsg( '#dhmn', orig.prefix + msg.person.nick + '> ' + msg.params.slice( -1 ).toString() );
+}
+
+function command_dispatch( orig, dest, msg )
+{
+	var msgtext = msg.params.slice( -1 ).toString();
+	var prefixre = new RegExp(orig.opt.nick + ':(.*)');
+	var prefixmatch = prefixre.exec(msgtext);
+
+	// if someone types in 'ircdhmn:' then it is considered a command, and should be handled as such
+	if( prefixmatch != null && prefixmatch.length > 1 )
+	{
+		var cmdmatch;
+		for( var i = 0; i < commands.length; i++ )
 		{
-			case 'yes' :
-				from.privmsg('#dhmn', 'Good. Very good.');
-				break;
-
-			case 'no' :
-				from.privmsg('#dhmn', 'Tsk. Tsk.');
-				break;
-
-			case 'ls' :
-				to.names('#dhmn', function( channel, names ) {
-					from.privmsg('#dhmn', inprefix + names.join(', '));
-				});
-				break;
-
-			case 'src' :
-				from.privmsg('#dhmn', 'https://github.com/zombified/ircdhmn');
-				break;
-
-			case 'agree with me' :
-				from.privmsg('#dhmn', 'I agree with you, ' + msg.person.nick);
-				break;
-
-			default :
-				if( command.substr( 0, 'agree with '.length ) == 'agree with ' )
-				{
-					from.privmsg('#dhmn', 'I agree with ' + command.substr( 'agree with '.length ));
-				}
+			cmdmatch = commands[i].test.exec(prefixmatch[1]);
+			if( cmdmatch != null )
+			{
+				commands[i].op( orig, dest, msg, prefixmatch[1], cmdmatch );
+			}
 		}
 	}
 	else
 	{
-		echo_to( to, msg, outprefix );
+		echo( orig, dest, msg );
 	}
 }
 
 
 
-freebot.addListener( 'privmsg', freebot_listener );
-esperbot.addListener( 'privmsg', esperbot_listener );
+freenode.bot.addListener( 'privmsg', freenode_listener );
+espernet.bot.addListener( 'privmsg', espernet_listener );
 
-
-
-
-freebot.connect(function() {
+freenode.bot.connect(function() {
 	setTimeout( function() {
-		freebot.join('#dhmn');
-		botready('freebot');
+		freenode.bot.join('#dhmn');
+		botready('freenode');
 	}, 5000 );
 });
 
-esperbot.connect(function() {
-	esperbot.listenOnce( 'ping', function() {
+espernet.bot.connect(function() {
+	espernet.bot.listenOnce( 'ping', function() {
 		setTimeout( function() { 
-			esperbot.join('#dhmn'); 
-			botready('esperbot'); 
+			espernet.bot.join('#dhmn'); 
+			botready('espernet'); 
 		}, 5000 );
 	});
 });
